@@ -474,11 +474,27 @@ class VERLTrainer:
         #   - For each token position, compute returns as: returns[i] = reward[i + 1] + gamma * value[i + 1]
         #   - Compute advantage for each token as: advantage[i] = returns[i] - value[i].
         # Only compute these where the attention_mask is 1 (i.e., for valid tokens, not padding).
+        gamma = self.config.training.ppo_gamma
+        batch_size, seq_len = values.shape
+        mask = attention_mask.to(values.dtype)
+
+        expanded_rewards = torch.zeros_like(values)
+        for b in range(batch_size):
+            valid_positions = torch.nonzero(attention_mask[b], as_tuple=False)
+            if valid_positions.numel() == 0:
+                continue
+            last_idx = valid_positions[-1].item()
+            expanded_rewards[b, last_idx] = rewards[b]
+
+        returns = torch.zeros_like(values)
+        advantages = torch.zeros_like(values)
+        returns[:, :-1] = expanded_rewards[:, 1:] + gamma * values[:, 1:]
+        advantages[:, :-1] = returns[:, :-1] - values[:, :-1]
+
+        returns = returns * mask
+        advantages = advantages * mask
         # END ASSIGN7_2_1
-        raise NotImplementedError("Need to implement GAE computation for Assignment 7")
-        
-        # END ASSIGN7_2_1
-        
+
         return advantages, returns
     
     def train_step(self, rollout_batch: RolloutBatch) -> TrainingMetrics:
@@ -547,8 +563,12 @@ class VERLTrainer:
             #    - surr2 = clipped_ratio * advantages (clip ratio between 1-eps and 1+eps)
             # 3. Policy loss = -min(surr1, surr2).mean()
             # 4. Compute entropy bonus from policy logits
-            raise NotImplementedError("Need to implement PPO loss computation for Assignment 7")
-            
+            clip_eps = self.config.verl.ppo_clip_eps
+            ratio = torch.exp(new_log_probs - old_log_probs)
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * advantages
+            policy_loss = -torch.min(surr1, surr2).mean()
+            entropy = self._compute_entropy(scores)
             # END ASSIGN7_2_2
 
             # Compute KL divergence for monitoring
@@ -627,8 +647,10 @@ class VERLTrainer:
         # 2. Convert logits to log_probabilities using log_softmax
         # 3. Compute entropy: -(probs * log_probs).sum(dim=-1)
         # 4. Return mean over sequence length
-        raise NotImplementedError("Need to implement entropy computation for Assignment 7")
-        
+        probs = torch.softmax(logits, dim=-1)
+        log_probs = torch.log_softmax(logits, dim=-1)
+        entropy = -(probs * log_probs).sum(dim=-1)
+        return entropy.mean()
         # END ASSIGN7_2_3
     
     def save_checkpoint(self, checkpoint_path: str, epoch: int, metrics: Dict[str, float]):

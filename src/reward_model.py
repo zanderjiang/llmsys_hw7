@@ -278,14 +278,24 @@ class RewardModelTrainer:
             Loss tensor
         """
         # BEGIN ASSIGN7_1
-        # TODO: Compute rewards for chosen and rejected responses
-        # Get rewards using the model's forward pass
-        # Compute ranking loss: chosen should have higher reward than rejected
-        # 1. Get rewards for chosen responses
-        # 2. Get rewards for rejected responses
-        # 3. Compute ranking loss: chosen should have higher reward than rejected
+        chosen_outputs = self.model(
+            input_ids=batch['chosen']['input_ids'],
+            attention_mask=batch['chosen']['attention_mask'],
+            return_dict=True,
+        )
+        rejected_outputs = self.model(
+            input_ids=batch['rejected']['input_ids'],
+            attention_mask=batch['rejected']['attention_mask'],
+            return_dict=True,
+        )
 
-        raise NotImplementedError("Need to implement loss computation for Assignment 7")
+        chosen_rewards = chosen_outputs.rewards
+        rejected_rewards = rejected_outputs.rewards
+
+        target = torch.ones_like(chosen_rewards)
+        loss = self.loss_fn(chosen_rewards, rejected_rewards, target)
+
+        return loss, chosen_rewards, rejected_rewards
         # END ASSIGN7_1
     
     def train_step(self, batch: Dict) -> Dict[str, float]:
